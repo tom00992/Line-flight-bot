@@ -1,4 +1,4 @@
-import os
+import os, re
 from flask import Flask, request, abort
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
@@ -6,16 +6,13 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from flight_scraper import search_flights, format_flights
 
-# 載入 .env
 load_dotenv()
 LINE_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 
-# 初始化 LINE
 line_bot_api = LineBotApi(LINE_TOKEN)
 handler = WebhookHandler(LINE_SECRET)
 
-# 初始化 Flask
 app = Flask(__name__)
 
 @app.route("/callback", methods=['POST'])
@@ -28,64 +25,45 @@ def callback():
         abort(400)
     return 'OK'
 
-# 處理訊息事件
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
-    print(f"[DEBUG] 使用者傳來的訊息：{text}")
-
     reply = ""
 
-    # 關鍵字2：「好想出國」
-    if '好想出國' in text:
-        origin = '台北'
-        destinations = ['東京', '大阪', '北海道', '沖繩', '名古屋']
-        reply = "📢 為你查詢未來兩個月內從台北出發的日本城市機票：\n"
+    if text == "好想出國":
+        origin = "台北"
+        destinations = ["東京", "大阪", "北海道", "沖繩", "名古屋"]
+        for city in destinations:
+            res = search_flights(origin, city, 2025, 7)
+            if res:
+                reply += format_flights(res, origin, city, 2025, 7) + "\n\n"
+            else:
+                reply += f"{origin} → {city} 查無資料\n\n"
 
-        for dest in destinations:
-            result = search_flights(origin, dest)
-            section = f"\n📍 台北 → {dest}\n" + format_flights(result)
-            reply += section
+    elif re.match(r"\d{6}", text):
+        year = int(text[:4])
+        month = int(text[4:6])
+        dest = text[6:]
+        origin = "台北"
+        res = search_flights(origin, dest, year, month)
+        if res:
+            reply = format_flights(res, origin, dest, year, month)
+        else:
+            reply = "⚠️ 無法查詢該目的地，請再確認城市名稱。"
 
-    # 關鍵字3：「202601沖繩」這類年月查詢
-    elif len(text) > 6 and text[:6].isdigit():
-        print(f"[DEBUG] 偵測到年月格式查詢：{text}")
-        try:
-            year = text[:4]
-            month = text[4:6]
-            destination = text[6:].strip()
-            origin = '台北'
-            result = search_flights(origin, destination, year, month)
-            reply = f"📍 查詢 {origin} → {destination}：\n出發月份：{year} 年 {month} 月\n" + format_flights(result)
-        except Exception as e:
-            print(f"[ERROR] 查詢年月格式失敗：{e}")
-            reply = "⚠️ 無法解析你輸入的時間與地點，請再確認格式是否為『YYYYMM目的地』"
-
-    # 關鍵字1：「半年內台北到東京」
-    elif '到' in text:
-        try:
-            parts = text.replace('內', '').replace('月內', '').split('到')
-            time_range = parts[0].strip()
-            location = parts[1].strip()
-            origin = '台北'
-            result = search_flights(origin, location)
-            reply = f"📍 查詢 {origin} → {location}：\n" + format_flights(result)
-        except Exception as e:
-            print(f"[ERROR] 關鍵字1解析錯誤：{e}")
-            reply = "⚠️ 無法解析你的目的地，請再確認輸入格式。"
+    elif "到" in text and "內" in text:
+        origin = "台北"
+        dest = text.split("到")[-1]
+        res = search_flights(origin, dest, 2025, 7)
+        if res:
+            reply = format_flights(res, origin, dest, 2025, 7)
+        else:
+            reply = "⚠️ 查詢失敗，請再試一次或確認輸入格式"
 
     else:
-        reply = ("請輸入關鍵字，例如：\n"
-                 "•『好想出國』\n"
-                 "•『半年內台北到東京』\n"
-                 "•『202601沖繩』")
+        reply = "請輸入關鍵字，例如：\n• 好想出國\n• 半年內台北到東京\n• 202601東京"
 
-    # 回覆使用者
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply)
-    )
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
-# 啟動伺服器
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
