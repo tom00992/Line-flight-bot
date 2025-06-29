@@ -1,6 +1,7 @@
-import random
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime
 
-# 城市對應 Skyscanner 的機場代碼
 CITY_TO_CODE = {
     '東京': 'tyoa',
     '大阪': 'osa',
@@ -10,44 +11,45 @@ CITY_TO_CODE = {
     '鳥取': 'ttj',
 }
 
-# 查票主函式（目前模擬資料）
 def search_flights(origin, destination, year=None, month=None):
     city_code = CITY_TO_CODE.get(destination)
     if not city_code:
-        raise ValueError(f"找不到目的地代碼：{destination}")
+        return {'error': f"找不到目的地代碼：{destination}"}
 
-    traditional_airlines = ['華航', '長榮航空', '星宇航空', '全日空', '日航']
-    lowcost_airlines = ['虎航', '樂桃航空', '捷星', '香草航空']
+    # 台北的 Skyscanner 代碼固定用 tpet
+    url = f"https://www.skyscanner.com.tw/transport/flights/tpet/{city_code}/{str(year)[2:]}{str(month).zfill(2)}/"
 
-    def gen_mock(airline_list):
-        flights = []
-        for name in airline_list:
-            flights.append({
-                'airline': name,
-                'price': random.randint(4500, 7800),
-                'depart_date': f"{month}/{random.randint(1, 28)}" if month else f"07/{random.randint(5,25)}",
-                'direct': random.choice([True, False])
-            })
-        return sorted(flights, key=lambda x: x['price'])[:3]
-
-    return {
-        'traditional': gen_mock(traditional_airlines),
-        'lowcost': gen_mock(lowcost_airlines)
+    headers = {
+        "User-Agent": "Mozilla/5.0"
     }
 
-# 格式化輸出
-def format_flights(data):
-    lines = []
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, 'html.parser')
 
-    if 'error' in data:
-        return data['error']
+        # Skyscanner 的月曆票價在某些版本會嵌入 script/json，這裡我們以 fallback 處理
+        # 我們先簡單從網頁中抓最低票價區塊
+        prices = []
 
-    lines.append("🎫 傳統航空（前三便宜）")
-    for idx, f in enumerate(data['traditional'], 1):
-        lines.append(f"{idx}. {f['airline']} ${f['price']}｜{f['depart_date']} 出發｜{'直飛' if f['direct'] else '轉機'}")
+        for span in soup.find_all("span"):
+            text = span.get_text().replace(",", "").replace("NT$", "").strip()
+            if text.isdigit() and 2000 < int(text) < 20000:
+                prices.append(int(text))
 
-    lines.append("\n🧳 廉價航空（前三便宜）")
-    for idx, f in enumerate(data['lowcost'], 1):
-        lines.append(f"{idx}. {f['airline']} ${f['price']}｜{f['depart_date']} 出發｜{'直飛' if f['direct'] else '轉機'}")
+        prices = sorted(set(prices))[:3]  # 取前三個最低票價
 
-    return '\n'.join(lines)
+        flights = [{
+            'airline': '不明',
+            'price': p,
+            'depart_date': f"{month}/{10 + i*3}",  # 模擬出發日
+            'direct': True  # 預設為直飛
+        } for i, p in enumerate(prices)]
+
+        return {
+            'traditional': flights,
+            'lowcost': []
+        }
+
+    except Exception as e:
+        print(f"[ERROR] 查詢 Skyscanner 錯誤: {e}")
+        return {'error': '⚠️ 無法查詢票價，可能是 Skyscanner 格式變動或網頁阻擋。'}
