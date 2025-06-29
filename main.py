@@ -32,8 +32,8 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
-    print(f"使用者傳來的訊息：{text}")
-   
+    print(f"[DEBUG] 使用者傳來的訊息：{text}")
+
     reply = ""
 
     # 關鍵字2：「好想出國」
@@ -47,7 +47,21 @@ def handle_message(event):
             section = f"\n📍 台北 → {dest}\n" + format_flights(result)
             reply += section
 
-    # 關鍵字1：「時間範圍+台北到東京」這類查詢
+    # 關鍵字3：「202601沖繩」這類年月查詢
+    elif len(text) > 6 and text[:6].isdigit():
+        print(f"[DEBUG] 偵測到年月格式查詢：{text}")
+        try:
+            year = text[:4]
+            month = text[4:6]
+            destination = text[6:].strip()
+            origin = '台北'
+            result = search_flights(origin, destination, year, month)
+            reply = f"📍 查詢 {origin} → {destination}：\n出發月份：{year} 年 {month} 月\n" + format_flights(result)
+        except Exception as e:
+            print(f"[ERROR] 查詢年月格式失敗：{e}")
+            reply = "⚠️ 無法解析你輸入的時間與地點，請再確認格式是否為『YYYYMM目的地』"
+
+    # 關鍵字1：「半年內台北到東京」
     elif '到' in text:
         try:
             parts = text.replace('內', '').replace('月內', '').split('到')
@@ -56,16 +70,17 @@ def handle_message(event):
             origin = '台北'
             result = search_flights(origin, location)
             reply = f"📍 查詢 {origin} → {location}：\n" + format_flights(result)
-        except:
+        except Exception as e:
+            print(f"[ERROR] 關鍵字1解析錯誤：{e}")
             reply = "⚠️ 無法解析你的目的地，請再確認輸入格式。"
 
-    # 預設回覆
     else:
         reply = ("請輸入關鍵字，例如：\n"
                  "•『好想出國』\n"
-                 "•『半年內台北到東京』")
+                 "•『半年內台北到東京』\n"
+                 "•『202601沖繩』")
 
-    # 回覆訊息
+    # 回覆使用者
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply)
