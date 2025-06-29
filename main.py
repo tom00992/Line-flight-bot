@@ -25,30 +25,29 @@ def callback():
         abort(400)
     return 'OK'
 
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
-
     print(f"使用者傳來的訊息：{text}")
    
     reply = ""
 
-if '好想出國' in text:
-    origin = '台北'
-    destinations = ['東京', '大阪', '北海道', '沖繩', '名古屋']
-    reply = "📢 為你查詢未來兩個月內從台北出發的日本城市機票：\n"
+    if '好想出國' in text:
+        origin = '台北'
+        destinations = ['東京', '大阪', '北海道', '沖繩', '名古屋']
+        reply = "📢 為你查詢未來兩個月內從台北出發的日本城市機票：\n"
 
-    for dest in destinations:
-        result = search_flights(origin, dest)
-        section = f"\n📍 台北 → {dest}\n" + format_flights(result)
-        reply += section
-        
+        for dest in destinations:
+            result = search_flights(origin, dest)
+            section = f"\n📍 台北 → {dest}\n" + format_flights(result)
+            reply += section
+
     elif '到' in text:
-        # 簡單解析：半年內台北到東京
         try:
             parts = text.replace('內', '').replace('月內', '').split('到')
-            time_range = parts[0].strip()  # e.g., 半年
-            location = parts[1].strip()    # e.g., 東京
+            time_range = parts[0].strip()
+            location = parts[1].strip()
             origin = '台北'
             result = search_flights(origin, location)
             reply = f"📍 查詢 {origin} → {location}：\n" + format_flights(result)
@@ -64,6 +63,3 @@ if '好想出國' in text:
         event.reply_token,
         TextSendMessage(text=reply)
     )
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
