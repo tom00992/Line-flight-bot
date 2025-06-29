@@ -25,7 +25,6 @@ def callback():
         abort(400)
     return 'OK'
 
-
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
