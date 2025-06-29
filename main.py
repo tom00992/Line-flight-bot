@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from flight_scraper import search_flights, format_flights
 
 load_dotenv()
 LINE_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
@@ -27,13 +28,29 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
+    reply = ""
+
     if '好想出國' in text:
-        reply = "🔍 幫你查兩個月內台北到日本（東京/大阪/北海道/沖繩）的機票中……"
-    elif '到' in text and ('內' in text or '月內' in text):
-        reply = f"✈️ 正在查詢：『{text}』 的最便宜機票資訊……"
+        origin, dest = '台北', '日本'
+        result = search_flights(origin, dest)
+        reply = format_flights(result)
+
+    elif '到' in text:
+        # 簡單解析：半年內台北到東京
+        try:
+            parts = text.replace('內', '').replace('月內', '').split('到')
+            time_range = parts[0].strip()  # e.g., 半年
+            location = parts[1].strip()    # e.g., 東京
+            origin = '台北'
+            result = search_flights(origin, location)
+            reply = f"📍 查詢 {origin} → {location}：\n" + format_flights(result)
+        except:
+            reply = "⚠️ 無法解析你的目的地，請再確認輸入格式。"
+
     else:
-        reply = ("請輸入關鍵字，例如：\n• 『好想出國』\n"
-                 "• 或『半年內台北到東京』這種時間＋起點＋終點")
+        reply = ("請輸入關鍵字，例如：\n"
+                 "•『好想出國』\n"
+                 "•『半年內台北到東京』")
 
     line_bot_api.reply_message(
         event.reply_token,
