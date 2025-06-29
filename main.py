@@ -28,6 +28,9 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
+
+    print(f"使用者傳來的訊息：{text}")
+   
     reply = ""
 
     if '好想出國' in text:
