@@ -36,7 +36,7 @@ def handle_message(event):
     if '好想出國' in text:
     origin = '台北'
     destinations = ['東京', '大阪', '北海道', '沖繩']
-    reply = "📢 為你查詢未來兩個月內從台北出發的日本機票：\n"
+    reply = "📢 為你查詢未來兩個月內從台北出發的日本城市機票：\n"
 
     for dest in destinations:
         result = search_flights(origin, dest)
