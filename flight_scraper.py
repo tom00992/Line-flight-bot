@@ -1,73 +1,59 @@
-import requests
-from bs4 import BeautifulSoup
+from amadeus_search import search_flights_amadeus
 
-# 城市對應 Skyscanner 的機場代碼
-CITY_TO_CODE = {
-    '東京': 'tyoa',
-    '大阪': 'osa',
-    '北海道': 'spka',
-    '沖繩': 'okaa',
-    '名古屋': 'ngoa',
-    '鳥取': 'ttj',
+TRADITIONAL_AIRLINES = ["CI", "BR", "JX", "JL", "NH"]
+LOWCOST_AIRLINES = ["IT", "GK", "JW", "MM", "7C", "VZ", "TZ", "TR"]
+
+CITY_CODES = {
+    "台北": "TPE",
+    "東京": "TYO",
+    "大阪": "OSA",
+    "沖繩": "OKA",
+    "北海道": "CTS",
+    "名古屋": "NGO",
+    "鳥取": "TTJ"
 }
 
-# 查詢機票
-def search_flights(origin, destination, year=None, month=None):
-    city_code = CITY_TO_CODE.get(destination)
-    if not city_code:
-        return {'error': f"❌ 找不到目的地代碼：{destination}"}
+def classify_airline(iata_code):
+    if iata_code in TRADITIONAL_AIRLINES:
+        return "traditional"
+    else:
+        return "lowcost"
 
-    # Skyscanner 的查票網址（注意月份格式）
-    url = f"https://www.skyscanner.com.tw/transport/flights/tpet/{city_code}/{str(year)[2:]}{str(month).zfill(2)}/"
+def search_flights(origin_city, dest_city, year, month):
+    origin = CITY_CODES.get(origin_city)
+    destination = CITY_CODES.get(dest_city)
+    if not origin or not destination:
+        return None
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    results = {"traditional": [], "lowcost": []}
+    for day in ["05", "10", "15", "20", "25"]:
+        date_str = f"{year}-{month:02d}-{day}"
+        flights = search_flights_amadeus(origin, destination, date_str)
+        for f in flights:
+            category = classify_airline(f["airline"])
+            results[category].append(f)
 
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, 'html.parser')
+    for k in results:
+        results[k] = sorted(results[k], key=lambda x: x["price"])[:3]
+    return results
 
-        # 嘗試從頁面中找票價（Skyscanner 月曆價格不容易抓，這裡抓最常見 span 金額）
-        prices = []
-
-        for span in soup.find_all("span"):
-            text = span.get_text().replace(",", "").replace("NT$", "").strip()
-            if text.isdigit() and 2000 < int(text) < 20000:
-                prices.append(int(text))
-
-        prices = sorted(set(prices))[:3]  # 最便宜前三
-
-        flights = [{
-            'airline': '（實際航空公司未顯示）',
-            'price': p,
-            'depart_date': f"{month}/{10 + i*3}",  # 模擬出發日（無真實資訊）
-            'direct': True
-        } for i, p in enumerate(prices)]
-
-        return {
-            'traditional': flights,
-            'lowcost': []  # 真實資料中無法分辨，先留空
-        }
-
-    except Exception as e:
-        print(f"[ERROR] Skyscanner 爬蟲失敗：{e}")
-        return {'error': '⚠️ 無法查詢票價，請稍後再試。'}
-
-# 格式化回覆文字
-def format_flights(data):
-    lines = []
-
-    if 'error' in data:
-        return data['error']
+def format_flights(result, origin_city, dest_city, year=None, month=None):
+    lines = [f"📍 查詢 {origin_city} → {dest_city}："]
+    if year and month:
+        lines.append(f"出發月份：{year} 年 {month:02d} 月")
 
     lines.append("🎫 傳統航空（前三便宜）")
-    for idx, f in enumerate(data['traditional'], 1):
-        lines.append(f"{idx}. {f['airline']} ${f['price']}｜{f['depart_date']} 出發｜{'直飛' if f['direct'] else '轉機'}")
+    if result["traditional"]:
+        for i, f in enumerate(result["traditional"], 1):
+            lines.append(f"{i}. {f['airline']} ${f['price']}｜{f['depart_time'][5:10]} → {f['arrive_time'][5:10]}｜{'直飛' if f['direct'] else '轉機'}")
+    else:
+        lines.append("查無航班")
 
-    if data['lowcost']:
-        lines.append("\n🧳 廉價航空（前三便宜）")
-        for idx, f in enumerate(data['lowcost'], 1):
-            lines.append(f"{idx}. {f['airline']} ${f['price']}｜{f['depart_date']} 出發｜{'直飛' if f['direct'] else '轉機'}")
+    lines.append("\n🧳 廉價航空（前三便宜）")
+    if result["lowcost"]:
+        for i, f in enumerate(result["lowcost"], 1):
+            lines.append(f"{i}. {f['airline']} ${f['price']}｜{f['depart_time'][5:10]} → {f['arrive_time'][5:10]}｜{'直飛' if f['direct'] else '轉機'}")
+    else:
+        lines.append("查無航班")
 
     return '\n'.join(lines)
